@@ -1,0 +1,943 @@
+<?php
+session_start();
+
+// ডাটাবেস কনফিগারেশন
+$db_host = 'localhost';
+$db_user = 'root';
+$db_pass = '';
+$db_name = 'observer_learn';
+
+// ডাটাবেস কানেকশন
+try {
+    $conn = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8", $db_user, $db_pass);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch(PDOException $e) {
+    die("Database connection failed: " . $e->getMessage());
+}
+
+// ফাংশন: ইনপুট স্যানিটাইজেশন
+function sanitize_input($data) {
+    global $conn;
+    $data = trim($data);
+    $data = stripslashes($data);
+    $data = htmlspecialchars($data);
+    return $data;
+}
+
+// ফাংশন: ইউজার রোল চেক
+function check_user_role($required_roles) {
+    if (!isset($_SESSION['user_type']) || !in_array($_SESSION['user_type'], (array)$required_roles)) {
+        header("Location: ?action=unauthorized");
+        exit();
+    }
+}
+
+// CSS স্টাইল
+$css = '
+<style>
+    body {
+        font-family: "SolaimanLipi", "Siyam Rupali", Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f5f5f5;
+        color: #333;
+        line-height: 1.6;
+    }
+    
+    .header {
+        background-color: #1a5276;
+        color: white;
+        padding: 15px 0;
+        text-align: center;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    
+    .header h1 {
+        margin: 0;
+        font-size: 28px;
+        text-shadow: 1px 1px 2px #000;
+    }
+    
+    .header p {
+        margin: 5px 0 0;
+        font-size: 16px;
+    }
+    
+    .container {
+        width: 90%;
+        max-width: 1200px;
+        margin: 20px auto;
+        background-color: white;
+        padding: 20px;
+        border-radius: 5px;
+        box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    
+    .login-form, .register-form {
+        width: 350px;
+        margin: 30px auto;
+        padding: 20px;
+        background-color: #eaf2f8;
+        border-radius: 5px;
+        border: 1px solid #d4e6f1;
+    }
+    
+    .login-form h2, .register-form h2 {
+        text-align: center;
+        color: #1a5276;
+        margin-top: 0;
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    
+    .form-group input, .form-group select, .form-group textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        box-sizing: border-box;
+    }
+    
+    .btn {
+        background-color: #2874a6;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 3px;
+        cursor: pointer;
+        font-size: 16px;
+    }
+    
+    .btn:hover {
+        background-color: #1a5276;
+    }
+    
+    .btn-danger {
+        background-color: #e74c3c;
+    }
+    
+    .btn-success {
+        background-color: #2ecc71;
+    }
+    
+    .features {
+        display: flex;
+        justify-content: space-around;
+        flex-wrap: wrap;
+        margin-top: 30px;
+    }
+    
+    .feature-box {
+        width: 30%;
+        min-width: 250px;
+        background-color: #eaf2f8;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 5px;
+        text-align: center;
+        box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    }
+    
+    .feature-box h3 {
+        color: #1a5276;
+        border-bottom: 1px solid #d4e6f1;
+        padding-bottom: 10px;
+    }
+    
+    .footer {
+        background-color: #1a5276;
+        color: white;
+        text-align: center;
+        padding: 10px 0;
+        margin-top: 30px;
+        font-size: 14px;
+    }
+    
+    .error {
+        color: red;
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    
+    .success {
+        color: green;
+        text-align: center;
+        margin-bottom: 15px;
+    }
+    
+    .welcome-msg {
+        text-align: center;
+        font-size: 20px;
+        margin: 20px 0;
+        color: #1a5276;
+    }
+    
+    .logout-btn {
+        display: block;
+        text-align: center;
+        margin-top: 20px;
+        color: #1a5276;
+        text-decoration: none;
+    }
+    
+    .logout-btn:hover {
+        text-decoration: underline;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+    }
+    
+    table, th, td {
+        border: 1px solid #ddd;
+    }
+    
+    th, td {
+        padding: 12px;
+        text-align: left;
+    }
+    
+    th {
+        background-color: #1a5276;
+        color: white;
+    }
+    
+    tr:nth-child(even) {
+        background-color: #f2f2f2;
+    }
+    
+    .exam-question {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #f9f9f9;
+        border-left: 4px solid #1a5276;
+    }
+    
+    .exam-options {
+        margin-left: 20px;
+    }
+    
+    .exam-options label {
+        display: block;
+        margin: 5px 0;
+        cursor: pointer;
+    }
+    
+    .nav-menu {
+        background-color: #1a5276;
+        padding: 10px 0;
+    }
+    
+    .nav-menu ul {
+        list-style-type: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+    }
+    
+    .nav-menu li {
+        margin: 0 15px;
+    }
+    
+    .nav-menu a {
+        color: white;
+        text-decoration: none;
+        font-weight: bold;
+    }
+    
+    .nav-menu a:hover {
+        text-decoration: underline;
+    }
+    
+    .question {
+        margin-bottom: 30px;
+        padding: 15px;
+        background-color: #f0f8ff;
+        border-radius: 5px;
+    }
+    
+    @media (max-width: 768px) {
+        .feature-box {
+            width: 100%;
+        }
+        
+        .nav-menu ul {
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .nav-menu li {
+            margin: 5px 0;
+        }
+    }
+</style>
+';
+
+// অ্যাকশন হ্যান্ডলিং
+$action = isset($_GET['action']) ? $_GET['action'] : 'home';
+
+switch ($action) {
+    case 'login':
+        handle_login();
+        break;
+    case 'register':
+        handle_register();
+        break;
+    case 'logout':
+        handle_logout();
+        break;
+    case 'dashboard':
+        handle_dashboard();
+        break;
+    case 'create_exam':
+        handle_create_exam();
+        break;
+    case 'take_exam':
+        handle_take_exam();
+        break;
+    case 'submit_exam':
+        handle_submit_exam();
+        break;
+    case 'view_results':
+        handle_view_results();
+        break;
+    case 'unauthorized':
+        show_unauthorized();
+        break;
+    default:
+        if (isset($_SESSION['user_id'])) {
+            handle_dashboard();
+        } else {
+            handle_login();
+        }
+}
+
+// ফাংশন: লগইন হ্যান্ডলিং
+function handle_login() {
+    global $conn, $css;
+    
+    $error = '';
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        $username = sanitize_input($_POST['username']);
+        $password = $_POST['password'];
+
+        try {
+            $stmt = $conn->prepare("SELECT * FROM users WHERE username = :username");
+            $stmt->bindParam(':username', $username);
+            $stmt->execute();
+            
+            if ($stmt->rowCount() == 1) {
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (password_verify($password, $user['password'])) {
+                    $_SESSION['user_id'] = $user['id'];
+                    $_SESSION['username'] = $user['username'];
+                    $_SESSION['full_name'] = $user['full_name'];
+                    $_SESSION['user_type'] = $user['user_type'];
+                    $_SESSION['school'] = $user['school'];
+                    $_SESSION['class'] = $user['class'];
+                    
+                    header("Location: ?action=dashboard");
+                    exit();
+                } else {
+                    $error = "ভুল পাসওয়ার্ড!";
+                }
+            } else {
+                $error = "ব্যবহারকারী নাম পাওয়া যায়নি!";
+            }
+        } catch(PDOException $e) {
+            $error = "ডাটাবেস ত্রুটি: " . $e->getMessage();
+        }
+    }
+    
+    echo <<<HTML
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBSERVER LEARN - লগইন</title>
+    $css
+</head>
+<body>
+    <div class="header">
+        <h1>OBSERVER LEARN</h1>
+        <p>সরকারি স্কুল শিক্ষামূলক সফটওয়্যার</p>
+    </div>
+    
+    <div class="container">
+        <div class="login-form">
+            <h2>লগইন করুন</h2>
+            {$error ? "<div class='error'>$error</div>" : ""}
+            <form method="POST" action="?action=login">
+                <div class="form-group">
+                    <label for="username">ব্যবহারকারীর নাম</label>
+                    <input type="text" id="username" name="username" placeholder="ব্যবহারকারীর নাম লিখুন" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">পাসওয়ার্ড</label>
+                    <input type="password" id="password" name="password" placeholder="পাসওয়ার্ড লিখুন" required>
+                </div>
+                
+                <button type="submit" class="btn">লগইন</button>
+            </form>
+            <p style="text-align: center; margin-top: 15px;">নতুন ব্যবহারকারী? <a href="?action=register">রেজিস্টার করুন</a></p>
+        </div>
+    </div>
+    
+    <div class="footer">
+        &copy; {date('Y')} OBSERVER LEARN - সকল অধিকার সংরক্ষিত
+    </div>
+</body>
+</html>
+HTML;
+}
+
+// ফাংশন: রেজিস্ট্রেশন হ্যান্ডলিং
+function handle_register() {
+    global $conn, $css;
+    
+    $error = '';
+    $success = '';
+
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        $full_name = sanitize_input($_POST['full_name']);
+        $username = sanitize_input($_POST['username']);
+        $password = $_POST['password'];
+        $confirm_password = $_POST['confirm_password'];
+        $school = sanitize_input($_POST['school']);
+        $class = sanitize_input($_POST['class']);
+        $user_type = 'student';
+
+        if ($password !== $confirm_password) {
+            $error = "পাসওয়ার্ড মিলছে না!";
+        } elseif (strlen($password) < 6) {
+            $error = "পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে!";
+        } else {
+            try {
+                $stmt = $conn->prepare("SELECT id FROM users WHERE username = :username");
+                $stmt->bindParam(':username', $username);
+                $stmt->execute();
+                
+                if ($stmt->rowCount() > 0) {
+                    $error = "এই ব্যবহারকারী নাম ইতিমধ্যে নেওয়া হয়েছে!";
+                } else {
+                    $hashed_password = password_hash($password, PASSWORD_BCRYPT);
+                    
+                    $stmt = $conn->prepare("INSERT INTO users (username, password, full_name, school, class, user_type) 
+                                           VALUES (:username, :password, :full_name, :school, :class, :user_type)");
+                    $stmt->bindParam(':username', $username);
+                    $stmt->bindParam(':password', $hashed_password);
+                    $stmt->bindParam(':full_name', $full_name);
+                    $stmt->bindParam(':school', $school);
+                    $stmt->bindParam(':class', $class);
+                    $stmt->bindParam(':user_type', $user_type);
+                    $stmt->execute();
+                    
+                    $success = "রেজিস্ট্রেশন সফল! এখন লগইন করুন।";
+                }
+            } catch(PDOException $e) {
+                $error = "ডাটাবেস ত্রুটি: " . $e->getMessage();
+            }
+        }
+    }
+    
+    echo <<<HTML
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBSERVER LEARN - রেজিস্টার</title>
+    $css
+</head>
+<body>
+    <div class="header">
+        <h1>OBSERVER LEARN</h1>
+        <p>সরকারি স্কুল শিক্ষামূলক সফটওয়্যার</p>
+    </div>
+    
+    <div class="container">
+        <div class="register-form">
+            <h2>নতুন অ্যাকাউন্ট তৈরি করুন</h2>
+            {$error ? "<div class='error'>$error</div>" : ""}
+            {$success ? "<div class='success'>$success</div>" : ""}
+            <form method="POST" action="?action=register">
+                <div class="form-group">
+                    <label for="full_name">পূর্ণ নাম</label>
+                    <input type="text" id="full_name" name="full_name" placeholder="আপনার পূর্ণ নাম লিখুন" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="username">ব্যবহারকারীর নাম</label>
+                    <input type="text" id="username" name="username" placeholder="ব্যবহারকারীর নাম লিখুন" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">পাসওয়ার্ড</label>
+                    <input type="password" id="password" name="password" placeholder="পাসওয়ার্ড লিখুন (কমপক্ষে ৬ অক্ষর)" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm_password">পাসওয়ার্ড নিশ্চিত করুন</label>
+                    <input type="password" id="confirm_password" name="confirm_password" placeholder="পাসওয়ার্ড আবার লিখুন" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="school">বিদ্যালয়ের নাম</label>
+                    <input type="text" id="school" name="school" placeholder="আপনার বিদ্যালয়ের নাম লিখুন" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="class">শ্রেণী</label>
+                    <select id="class" name="class" required>
+                        <option value="">শ্রেণী নির্বাচন করুন</option>
+                        <option value="৬ষ্ঠ শ্রেণী">৬ষ্ঠ শ্রেণী</option>
+                        <option value="৭ম শ্রেণী">৭ম শ্রেণী</option>
+                        <option value="৮ম শ্রেণী">৮ম শ্রেণী</option>
+                        <option value="৯ম শ্রেণী">৯ম শ্রেণী</option>
+                        <option value="১০ম শ্রেণী">১০ম শ্রেণী</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn">রেজিস্টার করুন</button>
+            </form>
+            <p style="text-align: center; margin-top: 15px;">ইতিমধ্যে অ্যাকাউন্ট আছে? <a href="?action=login">লগইন করুন</a></p>
+        </div>
+    </div>
+    
+    <div class="footer">
+        &copy; {date('Y')} OBSERVER LEARN - সকল অধিকার সংরক্ষিত
+    </div>
+</body>
+</html>
+HTML;
+}
+
+// ফাংশন: লগআউট হ্যান্ডলিং
+function handle_logout() {
+    session_unset();
+    session_destroy();
+    header("Location: ?action=login");
+    exit();
+}
+
+// ফাংশন: ড্যাশবোর্ড হ্যান্ডলিং
+function handle_dashboard() {
+    global $conn, $css;
+    
+    if (!isset($_SESSION['user_id'])) {
+        header("Location: ?action=login");
+        exit();
+    }
+
+    $available_exams = [];
+    if ($_SESSION['user_type'] == 'student') {
+        try {
+            $stmt = $conn->prepare("SELECT e.*, u.full_name AS teacher_name 
+                                  FROM exams e 
+                                  JOIN users u ON e.created_by = u.id 
+                                  WHERE e.class = :class 
+                                  AND e.id NOT IN (
+                                      SELECT exam_id FROM results WHERE user_id = :user_id
+                                  )");
+            $stmt->bindParam(':class', $_SESSION['class']);
+            $stmt->bindParam(':user_id', $_SESSION['user_id']);
+            $stmt->execute();
+            $available_exams = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch(PDOException $e) {
+            $error = "ডাটাবেস ত্রুটি: " . $e->getMessage();
+        }
+    }
+
+    $created_exams = [];
+    if ($_SESSION['user_type'] == 'teacher' || $_SESSION['user_type'] == 'admin') {
+        try {
+            $stmt = $conn->prepare("SELECT * FROM exams WHERE created_by = :user_id ORDER BY created_at DESC");
+            $stmt->bindParam(':user_id', $_SESSION['user_id']);
+            $stmt->execute();
+            $created_exams = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch(PDOException $e) {
+            $error = "ডাটাবেস ত্রুটি: " . $e->getMessage();
+        }
+    }
+
+    $results = [];
+    try {
+        $stmt = $conn->prepare("SELECT r.*, e.title, e.subject 
+                               FROM results r 
+                               JOIN exams e ON r.exam_id = e.id 
+                               WHERE r.user_id = :user_id 
+                               ORDER BY r.submitted_at DESC");
+        $stmt->bindParam(':user_id', $_SESSION['user_id']);
+        $stmt->execute();
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch(PDOException $e) {
+        $error = "ডাটাবেস ত্রুটি: " . $e->getMessage();
+    }
+    
+    $available_exams_html = '';
+    if ($_SESSION['user_type'] == 'student' && !empty($available_exams)) {
+        foreach ($available_exams as $exam) {
+            $available_exams_html .= <<<HTML
+                <tr>
+                    <td>{$exam['title']}</td>
+                    <td>{$exam['subject']}</td>
+                    <td>{$exam['duration']}</td>
+                    <td>{$exam['total_marks']}</td>
+                    <td>{$exam['teacher_name']}</td>
+                    <td><a href="?action=take_exam&exam_id={$exam['id']}" class="btn">পরীক্ষা দিন</a></td>
+                </tr>
+HTML;
+        }
+    } elseif ($_SESSION['user_type'] == 'student') {
+        $available_exams_html = <<<HTML
+            <div class="feature-box">
+                <h3>কোন নতুন পরীক্ষা পাওয়া যায়নি</h3>
+                <p>বর্তমানে আপনার জন্য কোন নতুন পরীক্ষা উপলব্ধ নেই। অনুগ্রহ করে পরে আবার চেক করুন।</p>
+            </div>
+HTML;
+    }
+
+    $created_exams_html = '';
+    if (($_SESSION['user_type'] == 'teacher' || $_SESSION['user_type'] == 'admin') && !empty($created_exams)) {
+        foreach ($created_exams as $exam) {
+            $created_exams_html .= <<<HTML
+                <tr>
+                    <td>{$exam['title']}</td>
+                    <td>{$exam['subject']}</td>
+                    <td>{$exam['class']}</td>
+                    <td>{$exam['duration']}</td>
+                    <td>{$exam['total_marks']}</td>
+                    <td>
+                        <a href="?action=take_exam&exam_id={$exam['id']}" class="btn">দেখুন</a>
+                        <a href="?action=view_results&exam_id={$exam['id']}" class="btn">ফলাফল</a>
+                    </td>
+                </tr>
+HTML;
+        }
+    } elseif ($_SESSION['user_type'] == 'teacher' || $_SESSION['user_type'] == 'admin') {
+        $created_exams_html = <<<HTML
+            <div class="feature-box">
+                <h3>আপনি এখনো কোন পরীক্ষা তৈরি করেননি</h3>
+                <p>একটি নতুন পরীক্ষা তৈরি করতে উপরের মেনু থেকে "নতুন পরীক্ষা তৈরি করুন" এ ক্লিক করুন।</p>
+            </div>
+HTML;
+    }
+
+    $results_html = '';
+    if (!empty($results)) {
+        foreach ($results as $result) {
+            $results_html .= <<<HTML
+                <tr>
+                    <td>{$result['title']}</td>
+                    <td>{$result['subject']}</td>
+                    <td>{$result['obtained_marks']}</td>
+                    <td>{$result['total_marks']}</td>
+                    <td>{$result['percentage']}%</td>
+                    <td>{date('d/m/Y', strtotime($result['submitted_at']))}</td>
+                </tr>
+HTML;
+        }
+    }
+    
+    echo <<<HTML
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBSERVER LEARN - ড্যাশবোর্ড</title>
+    $css
+</head>
+<body>
+    <div class="header">
+        <h1>OBSERVER LEARN</h1>
+        <p>সরকারি স্কুল শিক্ষামূলক সফটওয়্যার</p>
+    </div>
+    
+    <div class="nav-menu">
+        <ul>
+            <li><a href="?action=dashboard">হোম</a></li>
+            {($_SESSION['user_type'] == 'teacher' || $_SESSION['user_type'] == 'admin') ? '<li><a href="?action=create_exam">নতুন পরীক্ষা তৈরি করুন</a></li>' : ''}
+            <li><a href="?action=view_results">আমার ফলাফল</a></li>
+            <li><a href="?action=logout">লগআউট</a></li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <div class="welcome-msg">
+            স্বাগতম, {$_SESSION['full_name']} ({$_SESSION['user_type']})
+            <br>
+            বিদ্যালয়: {$_SESSION['school']}
+            {$_SESSION['user_type'] == 'student' ? "<br>শ্রেণী: {$_SESSION['class']}" : ""}
+        </div>
+        
+        {$_SESSION['user_type'] == 'student' ? "
+            <h2>আপনার জন্য উপলব্ধ পরীক্ষা</h2>
+            ".(!empty($available_exams) ? "
+            <table>
+                <tr>
+                    <th>পরীক্ষার নাম</th>
+                    <th>বিষয়</th>
+                    <th>সময় (মিনিট)</th>
+                    <th>মোট নম্বর</th>
+                    <th>শিক্ষকের নাম</th>
+                    <th>অ্যাকশন</th>
+                </tr>
+                $available_exams_html
+            </table>
+            " : $available_exams_html)."
+        " : ""}
+        
+        {($_SESSION['user_type'] == 'teacher' || $_SESSION['user_type'] == 'admin') ? "
+            <h2>আপনার তৈরি করা পরীক্ষা</h2>
+            ".(!empty($created_exams) ? "
+            <table>
+                <tr>
+                    <th>পরীক্ষার নাম</th>
+                    <th>বিষয়</th>
+                    <th>শ্রেণী</th>
+                    <th>সময় (মিনিট)</th>
+                    <th>মোট নম্বর</th>
+                    <th>অ্যাকশন</th>
+                </tr>
+                $created_exams_html
+            </table>
+            " : $created_exams_html)."
+        " : ""}
+        
+        {!empty($results) ? "
+            <h2>আপনার সাম্প্রতিক ফলাফল</h2>
+            <table>
+                <tr>
+                    <th>পরীক্ষার নাম</th>
+                    <th>বিষয়</th>
+                    <th>প্রাপ্ত নম্বর</th>
+                    <th>মোট নম্বর</th>
+                    <th>শতকরা</th>
+                    <th>তারিখ</th>
+                </tr>
+                $results_html
+            </table>
+        " : ""}
+    </div>
+    
+    <div class="footer">
+        &copy; {date('Y')} OBSERVER LEARN - সকল অধিকার সংরক্ষিত
+    </div>
+</body>
+</html>
+HTML;
+}
+
+// ফাংশন: পরীক্ষা তৈরি হ্যান্ডলিং
+function handle_create_exam() {
+    global $conn, $css;
+    check_user_role(['teacher', 'admin']);
+    
+    $error = '';
+    $success = '';
+
+    if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+        $title = sanitize_input($_POST['title']);
+        $subject = sanitize_input($_POST['subject']);
+        $class = sanitize_input($_POST['class']);
+        $duration = (int)$_POST['duration'];
+        $total_marks = (int)$_POST['total_marks'];
+        
+        try {
+            $stmt = $conn->prepare("INSERT INTO exams (title, subject, class, duration, total_marks, created_by) 
+                                   VALUES (:title, :subject, :class, :duration, :total_marks, :created_by)");
+            $stmt->bindParam(':title', $title);
+            $stmt->bindParam(':subject', $subject);
+            $stmt->bindParam(':class', $class);
+            $stmt->bindParam(':duration', $duration);
+            $stmt->bindParam(':total_marks', $total_marks);
+            $stmt->bindParam(':created_by', $_SESSION['user_id']);
+            $stmt->execute();
+            
+            $exam_id = $conn->lastInsertId();
+            
+            foreach ($_POST['questions'] as $question) {
+                $question_text = sanitize_input($question['text']);
+                $option1 = sanitize_input($question['option1']);
+                $option2 = sanitize_input($question['option2']);
+                $option3 = sanitize_input($question['option3']);
+                $option4 = sanitize_input($question['option4']);
+                $correct_option = (int)$question['correct_option'];
+                $marks = (int)$question['marks'];
+                
+                $stmt = $conn->prepare("INSERT INTO questions (exam_id, question_text, option1, option2, option3, option4, correct_option, marks) 
+                                       VALUES (:exam_id, :question_text, :option1, :option2, :option3, :option4, :correct_option, :marks)");
+                $stmt->bindParam(':exam_id', $exam_id);
+                $stmt->bindParam(':question_text', $question_text);
+                $stmt->bindParam(':option1', $option1);
+                $stmt->bindParam(':option2', $option2);
+                $stmt->bindParam(':option3', $option3);
+                $stmt->bindParam(':option4', $option4);
+                $stmt->bindParam(':correct_option', $correct_option);
+                $stmt->bindParam(':marks', $marks);
+                $stmt->execute();
+            }
+            
+            $success = "পরীক্ষা সফলভাবে তৈরি হয়েছে!";
+        } catch(PDOException $e) {
+            $error = "ডাটাবেস ত্রুটি: " . $e->getMessage();
+        }
+    }
+    
+    echo <<<HTML
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBSERVER LEARN - নতুন পরীক্ষা তৈরি করুন</title>
+    $css
+    <script>
+        function addQuestion() {
+            const questionCount = document.querySelectorAll('.question').length + 1;
+            const questionsDiv = document.getElementById('questions');
+            
+            const questionDiv = document.createElement('div');
+            questionDiv.className = 'question';
+            questionDiv.innerHTML = `
+                <h3>প্রশ্ন \${questionCount}</h3>
+                <div class="form-group">
+                    <label>প্রশ্নের বিবরণ</label>
+                    <textarea name="questions[\${questionCount}][text]" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>বিকল্প ১</label>
+                    <input type="text" name="questions[\${questionCount}][option1]" required>
+                </div>
+                <div class="form-group">
+                    <label>বিকল্প ২</label>
+                    <input type="text" name="questions[\${questionCount}][option2]" required>
+                </div>
+                <div class="form-group">
+                    <label>বিকল্প ৩</label>
+                    <input type="text" name="questions[\${questionCount}][option3]" required>
+                </div>
+                <div class="form-group">
+                    <label>বিকল্প ৪</label>
+                    <input type="text" name="questions[\${questionCount}][option4]" required>
+                </div>
+                <div class="form-group">
+                    <label>সঠিক উত্তর</label>
+                    <select name="questions[\${questionCount}][correct_option]" required>
+                        <option value="1">বিকল্প ১</option>
+                        <option value="2">বিকল্প ২</option>
+                        <option value="3">বিকল্প ৩</option>
+                        <option value="4">বিকল্প ৪</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>নম্বর</label>
+                    <input type="number" name="questions[\${questionCount}][marks]" min="1" value="1" required>
+                </div>
+                <button type="button" onclick="this.parentNode.remove()" class="btn btn-danger">প্রশ্ন 삭제 করুন</button>
+            `;
+            
+            questionsDiv.appendChild(questionDiv);
+        }
+    </script>
+</head>
+<body>
+    <div class="header">
+        <h1>OBSERVER LEARN</h1>
+        <p>সরকারি স্কুল শিক্ষামূলক সফটওয়্যার</p>
+    </div>
+    
+    <div class="nav-menu">
+        <ul>
+            <li><a href="?action=dashboard">হোম</a></li>
+            <li><a href="?action=create_exam">নতুন পরীক্ষা তৈরি করুন</a></li>
+            <li><a href="?action=view_results">আমার ফলাফল</a></li>
+            <li><a href="?action=logout">লগআউট</a></li>
+        </ul>
+    </div>
+    
+    <div class="container">
+        <h2>নতুন পরীক্ষা তৈরি করুন</h2>
+        {$error ? "<div class='error'>$error</div>" : ""}
+        {$success ? "<div class='success'>$success</div>" : ""}
+        
+        <form method="POST" action="?action=create_exam">
+            <div class="form-group">
+                <label for="title">পরীক্ষার নাম</label>
+                <input type="text" id="title" name="title" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="subject">বিষয়</label>
+                <select id="subject" name="subject" required>
+                    <option value="">বিষয় নির্বাচন করুন</option>
+                    <option value="গণিত">গণিত</option>
+                    <option value="বিজ্ঞান">বিজ্ঞান</option>
+                    <option value="ইংরেজি">ইংরেজি</option>
+                    <option value="বাংলা">বাংলা</option>
+                    <option value="ইতিহাস">ইতিহাস</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="class">শ্রেণী</label>
+                <select id="class" name="class" required>
+                    <option value="">শ্রেণী নির্বাচন করুন</option>
+                    <option value="৬ষ্ঠ শ্রেণী">৬ষ্ঠ শ্রেণী</option>
+                    <option value="৭ম শ্রেণী">৭ম শ্রেণী</option>
+                    <option value="৮ম শ্রেণী">৮ম শ্রেণী</option>
+                    <option value="৯ম শ্রেণী">৯ম শ্রেণী</option>
+                    <option value="১০ম শ্রেণী">১০ম শ্রেণী</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="duration">পরীক্ষার সময় (মিনিট)</label>
+                <input type="number" id="duration" name="duration" min="1" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="total_marks">মোট নম্বর</label>
+                <input type="number" id="total_marks" name="total_marks" min="1" required>
+            </div>
+            
+            <h3>প্রশ্ন যোগ করুন</h3>
+            <div id="questions">
+                <!-- প্রশ্নগুলো এখানে যোগ হবে -->
+            </div>
+            
+            <button type="button" onclick="addQuestion()" class="btn btn-success">প্রশ্ন যোগ করুন</button>
+            <button type="submit" class="btn">পরীক্ষা তৈরি করুন</button>
+        </form>
+    </div>
+    
+    <div class="footer">
+        &copy; {date('Y')} OBSERVER LEARN - সকল অধিকার সংরক্ষিত
+    </div>
+    
+    <script>
+        // প্রথম প্রশ্নটি অটো যোগ করুন
+        window.onload = function() {
+            addQuestion();
+        };
+    </script>
+</body>
+</html>
+HTML;
+}
+
+// ফাংশন
